@@ -21,7 +21,7 @@ button:focus-visible,textarea:focus-visible,input:focus-visible{outline:2px soli
 <div id="root"></div>
 <script>
 const {useState,useEffect}=React,h=React.createElement;
-const MODEL='gemini-2.5-flash';
+const MODEL='gemini-3.8-flash';
 const SYS="You are a social media editor. Using ONLY the user's source text, write: (1) exactly 3 Instagram Reel ideas, each with a catchy hook and a short script of about 25 seconds (hook, 2 or 3 beats, call to action); (2) exactly 1 viral-style LinkedIn post (short lines, one clear idea, ends with a question); (3) exactly 5 Twitter/X thread posts, each under 270 characters, the first one a strong hook. Write in the same language as the source text. Do not invent facts, numbers or quotes that are not in the source. Return only JSON that matches the schema.";
 const SCHEMA={type:'OBJECT',properties:{
   reels:{type:'ARRAY',items:{type:'OBJECT',properties:{hook:{type:'STRING'},script:{type:'STRING'}},required:['hook','script']}},
