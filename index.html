@@ -22,7 +22,12 @@ button:focus-visible,textarea:focus-visible,input:focus-visible{outline:2px soli
 <script>
 const {useState,useEffect}=React,h=React.createElement;
 const MODEL='gemini-3.8-flash';
+const FREE_LIMIT=3,USED_KEY='rp_used',PREM_KEY='rp_premium';
+const PAY_URL='https://razorpay.com'; /* placeholder: no real payment happens */
 const YT=/^https?:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\/\S+$/;
+const rd=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
+const wr=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+const rm=k=>{try{localStorage.removeItem(k)}catch(e){}};
 const SYS="You are a social media editor. Using ONLY the user's source text, write: (1) exactly 3 Instagram Reel ideas, each with a catchy hook and a short script of about 25 seconds (hook, 2 or 3 beats, call to action); (2) exactly 1 viral-style LinkedIn post (short lines, one clear idea, ends with a question); (3) exactly 5 Twitter/X thread posts, each under 270 characters, the first one a strong hook. Write in the same language as the source text. Do not invent facts, numbers or quotes that are not in the source. Return only JSON that matches the schema.";
 const SCHEMA={type:'OBJECT',properties:{
   reels:{type:'ARRAY',items:{type:'OBJECT',properties:{hook:{type:'STRING'},script:{type:'STRING'}},required:['hook','script']}},
@@ -36,11 +41,12 @@ async function callGemini(key,text){
       body:JSON.stringify({systemInstruction:{parts:[{text:SYS}]},
         contents:[{role:'user',parts:YT.test(text)?[{fileData:{fileUri:text}},{text:'The source is the video above. Use what is said and shown in it.'}]:[{text:'Source text:\n\n'+text}]}],
         generationConfig:{responseMimeType:'application/json',responseSchema:SCHEMA,temperature:0.8}})});
-  }catch(e){throw new Error('Could not reach Google. Check your internet. If you opened this inside a preview that blocks network calls, host the file on GitHub Pages.')}
+  }catch(e){throw new Error('Could not reach Google. Check your internet.')}
   const j=await r.json().catch(()=>({}));
   if(!r.ok){
     const m=(j.error&&j.error.message)||'';
     if(r.status==429)throw new Error('Too many requests or the free daily limit is reached. Wait a minute and try again.');
+    if(r.status==503||r.status==502||r.status==500)throw new Error('Google is busy right now. Wait a few minutes and press Generate again.');
     if(r.status==400&&/API key/i.test(m))throw new Error('The API key is not valid. Check it and paste it again.');
     if(r.status==403)throw new Error('This key has no permission. Create a new key in Google AI Studio.');
     throw new Error('Google returned an error ('+r.status+'). '+m.slice(0,140));
@@ -60,40 +66,60 @@ function Card({title,sub,text,onCopy}){
       h('button',{onClick:()=>onCopy(text),className:'shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/10'},'Copy')),
     h('p',{className:'mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-300'},text));
 }
+function Modal({onClose}){
+  const [plan,setPlan]=useState('m');
+  const plans=[['m','₹199 / Month','Cancel any time'],['l','₹1,499 / Lifetime Access','Pay once']];
+  return h('div',{className:'fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 sm:items-center',onClick:onClose},
+    h('div',{role:'dialog','aria-modal':'true','aria-label':'Upgrade to Premium',onClick:e=>e.stopPropagation(),className:'max-h-[92vh] w-full max-w-md overflow-y-auto rounded-3xl border border-amber-300/30 bg-[#12141b] p-6 shadow-2xl'},
+      h('div',{className:'flex items-start justify-between gap-3'},
+        h('div',null,h('div',{className:'text-xs font-semibold text-amber-300'},'Free limit reached or want more?'),h('h2',{className:'mt-1 text-2xl font-bold'},'Unlock Premium')),
+        h('button',{onClick:onClose,'aria-label':'Close',className:'rounded-lg px-2 py-1 text-slate-400 hover:bg-white/10'},'✕')),
+      h('ul',{className:'mt-4 space-y-2 text-sm text-slate-200'},
+        ['Unlimited generations','Copy-ready posts for Reels, LinkedIn and X','Updates as new features are added'].map(t=>h('li',{key:t,className:'flex gap-2'},h('span',{className:'text-teal-300'},'✓'),t))),
+      h('div',{className:'mt-5 space-y-2'},plans.map(([k,t,s])=>h('button',{key:k,onClick:()=>setPlan(k),'aria-pressed':plan==k,className:'flex w-full items-center justify-between rounded-2xl border p-4 text-left '+(plan==k?'border-amber-300 bg-amber-300/10':'border-white/10 bg-white/[0.03]')},
+        h('span',null,h('span',{className:'block font-semibold'},t),h('span',{className:'text-xs text-slate-400'},s)),
+        h('span',{className:'h-4 w-4 rounded-full border-2 '+(plan==k?'border-amber-300 bg-amber-300':'border-slate-500')})))),
+      h('button',{onClick:()=>window.open(PAY_URL,'_blank','noopener'),className:'mt-5 w-full rounded-xl bg-amber-300 py-3.5 text-base font-bold text-slate-900 hover:bg-amber-200'},'Pay Now to Unlock'),
+      h('p',{className:'mt-3 text-center text-xs text-slate-500'},'Demo only: sample prices and a placeholder payment page. No real payment is connected.')));
+}
 function App(){
+  const dev=typeof location!=='undefined'&&location.hash==='#dev';
   const [txt,setTxt]=useState(''),[busy,setBusy]=useState(false),[step,setStep]=useState(0),[out,setOut]=useState(null),
-        [tab,setTab]=useState('reels'),[pro,setPro]=useState(false),[msg,setMsg]=useState(''),[err,setErr]=useState(''),
-        [key,setKey]=useState(''),[draft,setDraft]=useState('');
-  useEffect(()=>{try{const k=localStorage.getItem('gem_key');if(k)setKey(k)}catch(e){}},[]);
+        [tab,setTab]=useState('reels'),[msg,setMsg]=useState(''),[err,setErr]=useState(''),
+        [key,setKey]=useState(''),[draft,setDraft]=useState(''),
+        [used,setUsed]=useState(()=>Math.max(0,parseInt(rd(USED_KEY)||'0',10)||0)),
+        [premium,setPremium]=useState(()=>rd(PREM_KEY)==='1'),[modal,setModal]=useState(false);
+  const locked=!premium&&used>=FREE_LIMIT;
+  useEffect(()=>{const k=rd('gem_key');if(k)setKey(k);if(!premium&&used>=FREE_LIMIT)setModal(true)},[]);
   useEffect(()=>{if(!busy)return;const a=setInterval(()=>setStep(s=>(s+1)%3),1500);return()=>clearInterval(a)},[busy]);
   useEffect(()=>{if(!msg)return;const t=setTimeout(()=>setMsg(''),2200);return()=>clearTimeout(t)},[msg]);
-  const saveKey=()=>{const k=draft.trim();if(k.length<20){setMsg('That does not look like a full key');return}
-    setKey(k);setDraft('');try{localStorage.setItem('gem_key',k)}catch(e){setMsg('Key kept for this session only')}};
-  const delKey=()=>{setKey('');try{localStorage.removeItem('gem_key')}catch(e){}};
+  const saveKey=()=>{const k=draft.trim();if(k.length<20){setMsg('That does not look like a full key');return}setKey(k);setDraft('');wr('gem_key',k)};
+  const delKey=()=>{setKey('');rm('gem_key')};
   const go=async()=>{
     setErr('');
+    if(locked){setModal(true);return}
     if(!key){setErr('Paste your Gemini API key first.');return}
     const t=txt.trim();
     if(!YT.test(t)&&t.length<80){setErr('Paste a YouTube link, or the full article text.');return}
     if(!YT.test(t)&&/^https?:\/\/\S+$/.test(t)){setErr('Only YouTube links work. Otherwise paste the text.');return}
     setOut(null);setStep(0);setBusy(true);
-    try{const o=await callGemini(key,t.slice(0,30000));setOut(o);setTab('reels')}
-    catch(e){setErr(e.message)}
+    try{
+      const o=await callGemini(key,t.slice(0,30000));setOut(o);setTab('reels');
+      if(!premium){const n=used+1;setUsed(n);wr(USED_KEY,String(n));if(n>=FREE_LIMIT)setTimeout(()=>setModal(true),700)}
+    }catch(e){setErr(e.message)}
     setBusy(false);
   };
   const copy=t=>{try{navigator.clipboard.writeText(t).then(()=>setMsg('Copied'),()=>setMsg('Press and hold the text to copy'))}catch(e){setMsg('Press and hold the text to copy')}};
+  const simulatePay=()=>{wr(PREM_KEY,'1');setPremium(true);setModal(false);setMsg('Premium unlocked (test)')};
+  const resetAll=()=>{rm(PREM_KEY);rm(USED_KEY);setPremium(false);setUsed(0);setMsg('Reset to free')};
   const tabs=[['reels','Reel hooks'],['li','LinkedIn'],['tw','X thread']];
   return h('div',{className:'mx-auto min-h-screen max-w-3xl px-4 pb-16'},
-    h('header',{className:'relative flex items-center justify-between py-5'},
+    h('header',{className:'flex items-center justify-between py-5'},
       h('div',{className:'text-lg font-bold tracking-tight'},'Repurpose',h('span',{className:'text-teal-300'},'.')),
-      h('button',{onClick:()=>setPro(!pro),className:'rounded-full bg-amber-300 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-amber-200'},'Upgrade to Premium'),
-      pro&&h('div',{className:'absolute right-0 top-16 z-10 w-72 rounded-2xl border border-amber-300/30 bg-[#14161d] p-4 shadow-2xl'},
-        h('div',{className:'font-semibold text-amber-200'},'Premium (preview only)'),
-        h('ul',{className:'mt-2 space-y-1 text-sm text-slate-300'},h('li',null,'Unlimited generations'),h('li',null,'Brand voice presets'),h('li',null,'Export to a file')),
-        h('div',{className:'mt-3 text-xs text-slate-400'},'Demo button. No payment is connected.'),
-        h('button',{onClick:()=>setPro(false),className:'mt-3 w-full rounded-lg bg-white/10 py-2 text-sm'},'Close'))),
+      premium?h('span',{className:'rounded-full border border-amber-300/60 px-4 py-2 text-sm font-semibold text-amber-200'},'Premium ✓')
+        :h('button',{onClick:()=>setModal(true),className:'rounded-full bg-amber-300 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-amber-200'},'Upgrade to Premium')),
     h('h1',{className:'mt-4 text-3xl font-bold leading-tight sm:text-4xl'},'One idea in. Three posts out.'),
-    h('p',{className:'mt-2 text-slate-400'},'Paste a transcript or article and get posts for Reels, LinkedIn and X.'),
+    h('p',{className:'mt-2 text-slate-400'},'Paste a YouTube link, transcript or article and get posts for Reels, LinkedIn and X.'),
     h('div',{className:'mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4'},
       h('div',{className:'text-sm text-slate-300'},'Gemini API key'),
       key?h('div',{className:'mt-2 flex items-center justify-between gap-3'},
@@ -105,8 +131,9 @@ function App(){
       h('p',{className:'mt-2 text-xs text-slate-500'},'Your key stays in this browser and is sent only to Google. Never share this page with the key saved in it.')),
     h('div',{className:'mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4'},
       h('label',{htmlFor:'in',className:'text-sm text-slate-300'},'Your content'),
-      h('textarea',{id:'in',rows:7,value:txt,onChange:e=>setTxt(e.target.value),placeholder:'Paste a YouTube transcript, article or blog text here…',className:'mt-2 w-full resize-y rounded-xl border border-white/10 bg-[#0b0d12] p-3 text-base text-slate-100 placeholder:text-slate-500'}),
-      h('button',{onClick:go,disabled:busy,className:'mt-3 w-full rounded-xl bg-teal-300 py-3 font-semibold text-slate-900 hover:bg-teal-200 disabled:opacity-60'},busy?'Working…':'Generate Social Posts'),
+      h('textarea',{id:'in',rows:7,value:txt,onChange:e=>setTxt(e.target.value),placeholder:'Paste a YouTube link, transcript, article or blog text here…',className:'mt-2 w-full resize-y rounded-xl border border-white/10 bg-[#0b0d12] p-3 text-base text-slate-100 placeholder:text-slate-500'}),
+      h('button',{onClick:go,disabled:busy||locked,className:'mt-3 w-full rounded-xl bg-teal-300 py-3 font-semibold text-slate-900 hover:bg-teal-200 disabled:opacity-50'},busy?'Working…':locked?'Free limit reached':'Generate Social Posts'),
+      !premium&&h('p',{className:'mt-2 text-center text-xs text-slate-400'},locked?h('button',{onClick:()=>setModal(true),className:'underline text-amber-200'},'Unlock unlimited generations'):'Free generations left: '+(FREE_LIMIT-used)+' of '+FREE_LIMIT),
       err&&h('p',{className:'mt-3 text-sm text-red-300',role:'alert'},err)),
     busy&&h('div',{className:'mt-6 flex items-center gap-3 rounded-2xl border border-white/10 p-4','aria-live':'polite'},
       h('div',{className:'spin h-5 w-5 rounded-full border-2 border-teal-300 border-t-transparent'}),h('span',{className:'text-slate-300'},STEPS[step])),
@@ -116,7 +143,13 @@ function App(){
         tab=='reels'&&out.reels.map((r,i)=>h(Card,{key:i,title:'Reel '+(i+1)+': '+r.hook,sub:'Hook and script',text:r.script,onCopy:copy})),
         tab=='li'&&h(Card,{title:'LinkedIn post',sub:'Ready to paste',text:out.linkedin,onCopy:copy}),
         tab=='tw'&&out.thread.map((t,i)=>h(Card,{key:i,title:'Post '+(i+1)+' of '+out.thread.length,text:t,onCopy:copy})))),
-    msg&&h('div',{className:'fixed left-1/2 bottom-6 -translate-x-1/2 rounded-lg bg-slate-100 px-4 py-2 text-sm text-slate-900'},msg));
+    dev&&h('div',{className:'mt-8 rounded-2xl border border-dashed border-red-300/40 p-4'},
+      h('div',{className:'text-sm font-semibold text-red-200'},'Developer test panel (open the page with #dev)'),
+      h('div',{className:'mt-3 flex flex-col gap-2 sm:flex-row'},
+        h('button',{onClick:simulatePay,className:'flex-1 rounded-xl bg-white/10 py-2.5 text-sm font-semibold'},'Simulate successful payment'),
+        h('button',{onClick:resetAll,className:'flex-1 rounded-xl bg-white/10 py-2.5 text-sm font-semibold'},'Reset to free (count 0)'))),
+    modal&&!premium&&h(Modal,{onClose:()=>setModal(false)}),
+    msg&&h('div',{className:'fixed left-1/2 bottom-6 z-[60] -translate-x-1/2 rounded-lg bg-slate-100 px-4 py-2 text-sm text-slate-900'},msg));
 }
 ReactDOM.createRoot(document.getElementById('root')).render(h(App));
 </script>
