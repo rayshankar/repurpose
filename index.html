@@ -22,6 +22,7 @@ button:focus-visible,textarea:focus-visible,input:focus-visible{outline:2px soli
 <script>
 const {useState,useEffect}=React,h=React.createElement;
 const MODEL='gemini-3.8-flash';
+const YT=/^https?:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\/\S+$/;
 const SYS="You are a social media editor. Using ONLY the user's source text, write: (1) exactly 3 Instagram Reel ideas, each with a catchy hook and a short script of about 25 seconds (hook, 2 or 3 beats, call to action); (2) exactly 1 viral-style LinkedIn post (short lines, one clear idea, ends with a question); (3) exactly 5 Twitter/X thread posts, each under 270 characters, the first one a strong hook. Write in the same language as the source text. Do not invent facts, numbers or quotes that are not in the source. Return only JSON that matches the schema.";
 const SCHEMA={type:'OBJECT',properties:{
   reels:{type:'ARRAY',items:{type:'OBJECT',properties:{hook:{type:'STRING'},script:{type:'STRING'}},required:['hook','script']}},
@@ -33,7 +34,7 @@ async function callGemini(key,text){
     r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+MODEL+':generateContent',{method:'POST',
       headers:{'Content-Type':'application/json','x-goog-api-key':key},
       body:JSON.stringify({systemInstruction:{parts:[{text:SYS}]},
-        contents:[{role:'user',parts:[{text:'Source text:\n\n'+text}]}],
+        contents:[{role:'user',parts:YT.test(text)?[{fileData:{fileUri:text}},{text:'The source is the video above. Use what is said and shown in it.'}]:[{text:'Source text:\n\n'+text}]}],
         generationConfig:{responseMimeType:'application/json',responseSchema:SCHEMA,temperature:0.8}})});
   }catch(e){throw new Error('Could not reach Google. Check your internet. If you opened this inside a preview that blocks network calls, host the file on GitHub Pages.')}
   const j=await r.json().catch(()=>({}));
@@ -73,8 +74,8 @@ function App(){
     setErr('');
     if(!key){setErr('Paste your Gemini API key first.');return}
     const t=txt.trim();
-    if(t.length<80){setErr('Paste the full transcript or article text (at least a few sentences).');return}
-    if(/^https?:\/\/\S+$/.test(t)){setErr('A link cannot be read. Paste the transcript or text instead.');return}
+    if(!YT.test(t)&&t.length<80){setErr('Paste a YouTube link, or the full article text.');return}
+    if(!YT.test(t)&&/^https?:\/\/\S+$/.test(t)){setErr('Only YouTube links work. Otherwise paste the text.');return}
     setOut(null);setStep(0);setBusy(true);
     try{const o=await callGemini(key,t.slice(0,30000));setOut(o);setTab('reels')}
     catch(e){setErr(e.message)}
