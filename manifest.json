@@ -4,9 +4,9 @@
   "display": "standalone",
   "name": "Repurpose Studio",
   "orientation": "any",
-  "scope": "/",
+  "scope": "/repurpose/",
   "short_name": "Repurpose",
-  "start_url": "/",
+  "start_url": "/repurpose/",
   "theme_color": "#6750a4",
   "id": "/repurpose/",
   "description": "Create and repurpose videos for social media"
