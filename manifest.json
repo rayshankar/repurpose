@@ -9,8 +9,8 @@
   "start_url": "/repurpose/",
   "theme_color": "#6750a4",
   "id": "/repurpose/",
-  "description": "Create and repurpose videos for social media"
-  "icons":, [
+  "description": "Create and repurpose videos for social media",
+  "icons": [
   {
     "src": "/repurpose/icon-192.png",
     "sizes": "192x192",
