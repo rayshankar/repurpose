@@ -1,0 +1,13 @@
+{
+  "background_color": "#ffffff",
+  "dir": "ltr",
+  "display": "standalone",
+  "name": "Repurpose Studio",
+  "orientation": "any",
+  "scope": "/",
+  "short_name": "Repurpose",
+  "start_url": "/",
+  "theme_color": "#6750a4",
+  "id": "/repurpose/",
+  "description": "Create and repurpose videos for social media"
+}
