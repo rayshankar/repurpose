@@ -1,25 +1,28 @@
+
 {
-  "background_color": "#ffffff",
-  "dir": "ltr",
-  "display": "standalone",
-  "name": "Repurpose Studio",
-  "orientation": "any",
-  "scope": "/repurpose/",
-  "short_name": "Repurpose",
-  "start_url": "/repurpose/",
-  "theme_color": "#6750a4",
   "id": "/repurpose/",
+  "name": "Repurpose Studio",
+  "short_name": "Repurpose",
   "description": "Create and repurpose videos for social media",
+  "start_url": "/repurpose/",
+  "scope": "/repurpose/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#6750a4",
   "icons": [
-  {
-    "src": "/repurpose/icon-192.png",
-    "sizes": "192x192",
-    "type": "image/png"
-  },
-  {
-    "src": "/repurpose/icon-512.png",
-    "sizes": "512x512",
-    "type": "image/png"
-  }
-]
+    {
+      "src": "/repurpose/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/repurpose/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
 }
+
